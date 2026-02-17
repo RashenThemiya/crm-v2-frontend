@@ -1,0 +1,54 @@
+import React from "react";
+import { listTicketStages, type TicketStage } from "../../../api/ticketStage.api";
+
+export function useTicketStagesMapByTypes(typeIds: number[]) {
+  const [map, setMap] = React.useState<Record<number, TicketStage[]>>({});
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  React.useEffect(() => {
+    const ids = Array.from(new Set((typeIds ?? []).filter(Boolean)));
+
+    // nothing to load
+    if (ids.length === 0) return;
+
+    // load only missing ids
+    const missing = ids.filter((id) => !map[id]);
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      setErr("");
+      try {
+        const res = await Promise.all(
+          missing.map(async (id) => {
+            const s = await listTicketStages(id);
+            return [id, s ?? []] as const;
+          })
+        );
+
+        if (cancelled) return;
+
+        setMap((prev) => {
+          const next = { ...prev };
+          res.forEach(([id, stages]) => (next[id] = stages));
+          return next;
+        });
+      } catch (e: any) {
+        if (cancelled) return;
+        setErr(e?.message ?? "Failed to load stages");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // NOTE: depend on typeIds + map
+  }, [typeIds, map]);
+
+  return { stagesMap: map, loading, err };
+}
